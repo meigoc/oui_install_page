@@ -1,105 +1,171 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dynamic Blur Background</title>
-    <style>
-        body {
-            margin: 0;
-            overflow: hidden;
-            background: black;
-        }
-        canvas {
-            position: absolute;
-            width: 100vw;
-            height: 100vh;
-            filter: blur(10px);
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Оптимизированный динамический фон с кругами и блюром</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+    }
+    /* Применяем блюр ко всему canvas */
+    canvas {
+      position: absolute;
+      width: 100vw;
+      height: 100vh;
+      filter: blur(10px);
+    }
+  </style>
 </head>
 <body>
-    <canvas id="bgCanvas"></canvas>
-    <script>
-        const canvas = document.getElementById("bgCanvas");
-        const ctx = canvas.getContext("2d");
+  <canvas id="bgCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById("bgCanvas");
+    const ctx = canvas.getContext("2d");
 
-        let bgGradient = null; // Кэшированный градиент
-        let circles = [];
+    let bgGradient = null;  // Кэш градиента фона
+    const circles = [];
 
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            updateBackgroundGradient();
+    // Подгоняем размеры canvas под окно и обновляем фон
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      updateBackgroundGradient();
+    }
+
+    function updateBackgroundGradient() {
+      const w = canvas.width, h = canvas.height;
+      bgGradient = ctx.createLinearGradient(0, 0, w, h);
+      bgGradient.addColorStop(0, "#1e90ff"); // Голубой
+      bgGradient.addColorStop(1, "#001f3f"); // Темно-синий
+    }
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    // Функция для создания оффскрин-канвы с радиальным градиентом круга.
+    // Canvas будет иметь размер (2 * maxRadius) x (2 * maxRadius),
+    // где в центре — насыщенный цвет, а по краям прозрачный.
+    function createCircleImage(color, maxRadius) {
+      const offCanvas = document.createElement('canvas');
+      const size = maxRadius * 2;
+      offCanvas.width = size;
+      offCanvas.height = size;
+      const offCtx = offCanvas.getContext('2d');
+
+      const grad = offCtx.createRadialGradient(maxRadius, maxRadius, 0, maxRadius, maxRadius, maxRadius);
+      // В центре — полностью непрозрачный цвет,
+      // на краю — тот же цвет, но с альфа=0.
+      grad.addColorStop(0, color);
+      // Преобразуем, например, "rgba(70,170,255,1)" в "rgba(70,170,255,0)"
+      let edgeColor = color.replace(/rgba?\(([^,]+),([^,]+),([^,\)]+)(,[^)]+)?\)/, 'rgba($1,$2,$3,0)');
+      grad.addColorStop(1, edgeColor);
+
+      offCtx.fillStyle = grad;
+      offCtx.beginPath();
+      offCtx.arc(maxRadius, maxRadius, maxRadius, 0, Math.PI * 2);
+      offCtx.fill();
+
+      return offCanvas;
+    }
+
+    // Функция создания нового круга, если их меньше 3
+    function createCircle() {
+      if (circles.length >= 3) return;
+
+      // Позиция круга
+      const x = Math.random() * canvas.width;
+      const y = Math.random() * canvas.height;
+      // Максимальный радиус от 100 до 250
+      const maxRadius = Math.random() * 150 + 100;
+      // Время роста от 20 до 50 секунд (в мс)
+      const growthDuration = Math.random() * 30000 + 20000;
+      // Время исчезания – 10 секунд (10000 мс)
+      const fadeDuration = 10000;
+      const totalDuration = growthDuration + fadeDuration;
+      
+      // Генерируем цвет: оттенок голубого от светлого до темного
+      const r = Math.floor(Math.random() * 50 + 50);   // 50-100
+      const g = Math.floor(Math.random() * 50 + 150);  // 150-200
+      const b = 255;                                 // фиксировано
+      const color = `rgba(${r}, ${g}, ${b}, 1)`;       // используем полную непрозрачность для оффскрина
+
+      const offscreenCanvas = createCircleImage(color, maxRadius);
+
+      circles.push({
+        x,
+        y,
+        maxRadius,
+        growthDuration,
+        fadeDuration,
+        totalDuration,
+        startTime: performance.now(),
+        offscreenCanvas
+      });
+    }
+
+    // Отрисовка фона с кэшированным градиентом
+    function drawBackground() {
+      ctx.fillStyle = bgGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    // Отрисовка кругов. Каждый круг в фазе роста увеличивается от 0 до maxRadius,
+    // затем (в течение 10 секунд) его прозрачность плавно падает до 0.
+    function drawCircles() {
+      const now = performance.now();
+      for (let i = circles.length - 1; i >= 0; i--) {
+        const circle = circles[i];
+        const elapsed = now - circle.startTime;
+        if (elapsed >= circle.totalDuration) {
+          // Удаляем круг, если закончилась его жизнь
+          circles.splice(i, 1);
+          continue;
         }
         
-        function updateBackgroundGradient() {
-            const w = canvas.width, h = canvas.height;
-            bgGradient = ctx.createLinearGradient(0, 0, w, h);
-            bgGradient.addColorStop(0, "#1e90ff"); // Голубой
-            bgGradient.addColorStop(1, "#001f3f"); // Темно-синий
+        let currentRadius, currentAlpha;
+        if (elapsed < circle.growthDuration) {
+          // Фаза роста: радиус от 0 до maxRadius, альфа = 1
+          const progress = elapsed / circle.growthDuration;
+          currentRadius = circle.maxRadius * progress;
+          currentAlpha = 1;
+        } else {
+          // Фаза исчезания: радиус = maxRadius, альфа падает от 1 до 0 за 10 секунд
+          currentRadius = circle.maxRadius;
+          const fadeProgress = (elapsed - circle.growthDuration) / circle.fadeDuration;
+          currentAlpha = 1 - fadeProgress;
         }
 
-        window.addEventListener("resize", resizeCanvas);
-        resizeCanvas();
+        // Рисуем готовое изображение круга, масштабируя его.
+        // Исходный оффскрин имеет размер 2*maxRadius.
+        // При масштабировании коэффициент = currentRadius / maxRadius.
+        const scale = currentRadius / circle.maxRadius;
+        const drawSize = circle.maxRadius * 2 * scale;
+        const drawX = circle.x - drawSize / 2;
+        const drawY = circle.y - drawSize / 2;
 
-        function createCircle() {
-            if (circles.length >= 3) return;
+        ctx.save();
+        ctx.globalAlpha = currentAlpha;
+        ctx.drawImage(circle.offscreenCanvas,
+                      0, 0, circle.offscreenCanvas.width, circle.offscreenCanvas.height,
+                      drawX, drawY, drawSize, drawSize);
+        ctx.restore();
+      }
+    }
 
-            const x = Math.random() * canvas.width;
-            const y = Math.random() * canvas.height;
-            const maxRadius = Math.random() * 150 + 100;
-            const duration = Math.random() * 3000 + 2000; // 2-5 секунд
-            const color = `rgba(${Math.floor(Math.random() * 50 + 50)}, ${Math.floor(Math.random() * 150 + 150)}, 255, 0.5)`;
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground();
+      drawCircles();
+      requestAnimationFrame(animate);
+    }
 
-            const startTime = performance.now();
-            circles.push({ x, y, maxRadius, radius: 0, color, startTime, duration, growing: true });
-        }
+    // Пытаемся создавать новый круг каждые 5 секунд (если их меньше 3)
+    setInterval(createCircle, 5000);
 
-        function drawBackground() {
-            ctx.fillStyle = bgGradient;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-        }
-
-        function drawCircles() {
-            const now = performance.now();
-            for (let i = circles.length - 1; i >= 0; i--) {
-                let c = circles[i];
-                let elapsed = now - c.startTime;
-
-                if (elapsed >= c.duration) {
-                    circles.splice(i, 1);
-                    continue;
-                }
-
-                // Управление размером (увеличение → уменьшение)
-                let progress = elapsed / c.duration;
-                if (progress >= 0.5) {
-                    c.growing = false;
-                    progress = 1 - progress; // Инверсия уменьшения
-                }
-                c.radius = c.maxRadius * (progress * 2);
-
-                const circleGradient = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.radius);
-                circleGradient.addColorStop(0, c.color);
-                circleGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
-
-                ctx.fillStyle = circleGradient;
-                ctx.beginPath();
-                ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
-                ctx.fill();
-            }
-        }
-
-        function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawBackground();
-            drawCircles();
-            requestAnimationFrame(animate);
-        }
-
-        setInterval(createCircle, 2000);
-        animate();
-    </script>
+    animate();
+  </script>
 </body>
 </html>
