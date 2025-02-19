@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Blur Background</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+        }
+        canvas {
+            position: absolute;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="bgCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById("bgCanvas");
+        const ctx = canvas.getContext("2d");
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener("resize", resizeCanvas);
+        resizeCanvas();
+
+        function drawBackground() {
+            const w = canvas.width, h = canvas.height;
+            const gradient = ctx.createLinearGradient(0, 0, w, h);
+            gradient.addColorStop(0, "#1e90ff"); // Голубой
+            gradient.addColorStop(1, "#001f3f"); // Темно-синий
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, w, h);
+
+            // Рисуем "пятна" как в установщике Windows 11
+            for (let i = 0; i < 5; i++) {
+                let x = Math.random() * w;
+                let y = Math.random() * h;
+                let radius = Math.random() * 200 + 50;
+                let alpha = Math.random() * 0.5 + 0.2;
+
+                const circleGradient = ctx.createRadialGradient(x, y, 0, x, y, radius);
+                circleGradient.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+                circleGradient.addColorStop(1, "rgba(255, 255, 255, 0)");
+
+                ctx.fillStyle = circleGradient;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // Добавляем блюр через CSS (если нужно)
+            canvas.style.filter = "blur(10px)";
+        }
+
+        function animate() {
+            drawBackground();
+            requestAnimationFrame(animate);
+        }
+        animate();
+    </script>
+</body>
+</html>
