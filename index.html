@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Blur Background</title>
     <style>
         body {
             margin: 0;
@@ -13,6 +14,7 @@
             position: absolute;
             width: 100vw;
             height: 100vh;
+            filter: blur(10px);
         }
     </style>
 </head>
@@ -22,14 +24,24 @@
         const canvas = document.getElementById("bgCanvas");
         const ctx = canvas.getContext("2d");
 
+        let bgGradient = null; // Кэшированный градиент
+        let circles = [];
+
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            updateBackgroundGradient();
         }
+        
+        function updateBackgroundGradient() {
+            const w = canvas.width, h = canvas.height;
+            bgGradient = ctx.createLinearGradient(0, 0, w, h);
+            bgGradient.addColorStop(0, "#1e90ff"); // Голубой
+            bgGradient.addColorStop(1, "#001f3f"); // Темно-синий
+        }
+
         window.addEventListener("resize", resizeCanvas);
         resizeCanvas();
-
-        const circles = [];
 
         function createCircle() {
             if (circles.length >= 3) return;
@@ -41,29 +53,32 @@
             const color = `rgba(${Math.floor(Math.random() * 50 + 50)}, ${Math.floor(Math.random() * 150 + 150)}, 255, 0.5)`;
 
             const startTime = performance.now();
-            circles.push({ x, y, maxRadius, radius: 0, color, startTime, duration });
+            circles.push({ x, y, maxRadius, radius: 0, color, startTime, duration, growing: true });
         }
 
         function drawBackground() {
-            const w = canvas.width, h = canvas.height;
-            const gradient = ctx.createLinearGradient(0, 0, w, h);
-            gradient.addColorStop(0, "#1e90ff"); // Голубой
-            gradient.addColorStop(1, "#001f3f"); // Темно-синий
+            ctx.fillStyle = bgGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
 
-            ctx.fillStyle = gradient;
-            ctx.fillRect(0, 0, w, h);
-
+        function drawCircles() {
             const now = performance.now();
             for (let i = circles.length - 1; i >= 0; i--) {
                 let c = circles[i];
                 let elapsed = now - c.startTime;
-                
+
                 if (elapsed >= c.duration) {
                     circles.splice(i, 1);
                     continue;
                 }
 
-                c.radius = (elapsed / c.duration) * c.maxRadius;
+                // Управление размером (увеличение → уменьшение)
+                let progress = elapsed / c.duration;
+                if (progress >= 0.5) {
+                    c.growing = false;
+                    progress = 1 - progress; // Инверсия уменьшения
+                }
+                c.radius = c.maxRadius * (progress * 2);
 
                 const circleGradient = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.radius);
                 circleGradient.addColorStop(0, c.color);
@@ -77,11 +92,13 @@
         }
 
         function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawBackground();
+            drawCircles();
             requestAnimationFrame(animate);
         }
 
-        setInterval(createCircle, 2000); // Запускаем появление новых кругов с интервалом
+        setInterval(createCircle, 2000);
         animate();
     </script>
 </body>
